@@ -1,0 +1,230 @@
+# A field defines the nature of some of the data that can be retrieve on the
+# domain.
+# It is similar to a table column.
+interface Field {
+  id: ID!
+  key: String!
+  label: String!
+}
+
+type TextField implements Field {
+  id: ID!
+  key: String!
+  label: String!
+}
+
+# A data is a single value that is associated with a field and an entry.
+# It is similar to a single table cell.
+interface Data {
+  # Represents the key of a Field.
+  key: String!
+}
+
+type TextData implements Data {
+  key: String!
+  value: String
+}
+
+# An entry is a set of data associated with a data query.
+# It is similar to a table row.
+type Entry {
+  id: ID!
+  data: [Data!]!
+}
+
+# You can only query one of the following filters, the priority is the order of definition
+# when multiple filters are sent.
+input IntFilter {
+  name: String!
+  eq: Int
+  lt: Int
+  gt: Int
+  in: [Int!]
+}
+
+# You can only query by eq OR lik OR in, the priority is the order of definition when
+# multiple filters are sent.
+input StringFilter {
+  name: String!
+  eq: String
+  like: String
+  in: [String!]
+}
+
+# This filter is specially to indicate a field should be null.
+input NullFilter {
+  name: String!
+}
+
+scalar ZonedDateTime
+
+# You can only query by eq OR  lt OR gt, the priority is the order of definition
+# when multiple filters are sent.
+input DateFilter {
+  name: String!
+  eq: ZonedDateTime
+  lt: ZonedDateTime
+  gt: ZonedDateTime
+}
+
+# You can only fill one filter, if multiple filters are provided,
+# the priority will be as the order of definition.
+# If you wannt set multiple intFilter or StringFilter or DateFilter or NullFilter,
+# You should set them in "and" | "or" filter.
+input EntriesFilter {
+  and: [EntriesFilter!]
+  or: [EntriesFilter!]
+  intFilter: IntFilter
+  stringFilter: StringFilter
+  dateFilter: DateFilter
+  nullFilter: NullFilter
+}
+
+enum AggregateOperator {
+  SUM
+  COUNT
+  AVERAGE
+  MAX
+  MIN
+}
+
+input AggregateField {
+  operator: AggregateOperator!
+  fieldName: String!
+  outputName: String!
+}
+
+input EntriesAggregator {
+  aggregateFields: [String!]!
+  aggregateOutputs: [AggregateField!]
+}
+
+type EntriesList {
+  count: Int!
+  entries: [Entry]!
+}
+
+enum Weight {
+  WEAK
+  STRONG
+}
+
+type EdgeRuleField {
+  id: ID!
+  node: Field!
+  weight: Weight
+}
+
+# A reference is a validated list of items for that are tied to a given field.
+type Reference {
+  id: ID!
+  # The collection name of the reference used in backend
+  name: String!
+  fields: [Field!]!
+}
+
+type Domain {
+  id: ID!
+  name: String!
+  fields: [Field!]!
+  entries(
+    filter: EntriesFilter
+    fields: [String!]
+    aggregate: EntriesAggregator
+  ): EntriesList
+  rules(
+    rulesTypes: [RuleTypes!]
+    filter: EntriesFilter
+    fields: [String!]
+    aggregate: EntriesAggregator
+  ): [Rule!]!
+}
+
+enum RuleTypes {
+  ASSOCIATION
+  BLACKLIST
+  CREATION
+}
+
+interface Rule {
+  id: ID!
+  label: String!
+  domain: Domain!
+  inputs: [EdgeRuleField!]!
+}
+
+# An association rule defines the possibility to create a new automatic matching
+# rule.
+type AssociationRule implements Rule {
+  id: ID!
+  label: String!
+  domain: Domain!
+  reference: Reference!
+  # The inputs are the fields that are necessary for the rule to have sense.
+  inputs: [EdgeRuleField!]!
+  # The output is the field that will be automatically filled when the rule is
+  # used in the engine.
+  output: EdgeRuleField!
+
+  # The reference field we can retrieve the value to set into output
+  referenceOutput: Field!
+}
+
+# An association rule defines the possibility to create a new automatic matching
+# rule.
+type BlacklistRule implements Rule {
+  id: ID!
+  label: String!
+  domain: Domain!
+  # The inputs are the fields that are necessary for the rule to have sense.
+  inputs: [EdgeRuleField!]!
+}
+
+type Query {
+  domains: [Domain!]!
+  domain(id: ID!): Domain!
+  references(reference: String!, filter: EntriesFilter): EntriesList!
+}
+
+interface Associator {
+  field: Field!
+}
+
+type TextAssociator implements Associator {
+  field: TextField!
+  eq: String!
+}
+
+type Association {
+  id: ID!
+  field: Field!
+  rule: AssociationRule!
+  inputs: [Associator!]!
+  output: Data!
+}
+
+type Blacklist {
+  id: ID!
+  rule: BlacklistRule!
+  inputs: [Associator!]!
+}
+
+input TextInputAssociator {
+  textFieldId: ID!
+  eq: String!
+}
+
+type Mutation {
+  createAssociation(
+    # AssociationRule ID
+    ruleId: ID!
+    textInputs: [TextInputAssociator!]
+    # Reference Entry ID
+    outputId: ID!
+  ): Association
+  createBlacklist(
+    # AssociationRule ID
+    ruleId: ID!
+    textInputs: [TextInputAssociator!]
+  ): Blacklist
+}
